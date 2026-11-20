@@ -1,4 +1,4 @@
-# aurobot-mod-memory
+# aurabot-mod-memory
 
 Aurabot（DSH 的 QQ 插件 `dsh-aurabot-qq`）的「记忆」模块**本地版**：**写入走本地记忆库，召回由 MC 与本地库合并给出**。
 
