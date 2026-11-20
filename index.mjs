@@ -72,6 +72,10 @@ export default {
     const memory = createMemoryStore({ dsh: api.dsh, getConfig: api.config, hub, log: api.log, fetchImpl, setConfig: api.setConfig })
     memory.list('') // 启动时完成旧 JSON 迁移，不必等第一条聊天或打开面板。
 
+    // 每轮常驻上下文：面板「常住记忆上限」那块（长期偏好/人物画像摘录），进运行时上下文快照。
+    // 与 prompt 钩子（进本轮对话）是两条通道，互不替代。
+    api.context(({ chat, sessionId }) => (chat.kind === 'system' ? '' : memory.contextFor(chat, sessionId)))
+
     // #79：随消息变化的相关记忆放在「交给她的内容」里，不放进每轮都会追加的运行时上下文快照
     // fork（2026-11-21）：与 mc-recall 并列注入；因为 filter 是链式的、mc-recall 先跑，
     // 这里能读到它已注入的 MC 片段，逐条去重后再追加本地记忆，避免同一件事说两遍。
@@ -84,7 +88,10 @@ export default {
         const hint = await memory.recallHintAsync(chat, query, info.prevText || '', info.sessionId, info.speakers || [], hits)
         if (!hint) return content
         const on = api.config()?.memory?.dedupeAgainstPrompt !== false
-        const { text, dropped } = on ? dedupeHint(hint, content) : { text: hint, dropped: 0 }
+        // 常驻块（api.context 那条通道）也算「已注入」，否则同一件事会在两处各出现一次
+        const persistent = memory.contextFor(chat, info.sessionId) || ''
+        const compare = persistent ? [...content, { type: 'text', text: persistent }] : content
+        const { text, dropped } = on ? dedupeHint(hint, compare) : { text: hint, dropped: 0 }
         if (dropped > 0) api.log?.info?.(`[memory] 与已注入内容重复，跳过 ${dropped} 条本地记忆`)
         if (!text) return content
         return [{ type: 'text', text }, ...content]
@@ -93,6 +100,58 @@ export default {
         return content
       }
     })
+
+    // 每分钟看一眼：到面板设的整理时间才真正调模型，平时只是检查状态
+    api.every(60_000, () => memory.tick(), '整理记忆')
+
+    // 合并召回：MC（长期、带引文）+ 本地库（自己记的事）。一次查两边，合并时去重。
+    // 工具层不静默丢：查不到会明说；重复的只在文本层合并，并在返回值里给出 dropped 数。
+    const MC_RECALL_URL = 'http://127.0.0.1:3100/api/recall'
+    const recallBoth = async (query, limit) => {
+      const q = String(query || '').trim()
+      if (!q) return { ok: false, message: '给个查询词' }
+      let mcText = ''
+      try {
+        const ctrl = new AbortController()
+        const timer = setTimeout(() => ctrl.abort(), 2000)
+        const res = await fetch(MC_RECALL_URL, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ query: q, limit }),
+          signal: ctrl.signal,
+        }).finally(() => clearTimeout(timer))
+        const data = await res.json().catch(() => null)
+        if (data?.success && Number(data.count) > 0) mcText = String(data.formatted || '').trim()
+      } catch (error) {
+        api.log?.debug?.(`[memory] MC 召回失败：${error?.message || error}`)
+      }
+      let localLines = []
+      try {
+        const hits = await memory.recallAsync(q, { limit })
+        localLines = (hits || []).map((h) => String(h?.it?.text || '').trim()).filter(Boolean)
+      } catch (error) {
+        api.log?.debug?.(`[memory] 本地召回失败：${error?.message || error}`)
+      }
+      const mcLines = mcText.split('\n').map((l) => normN(l)).filter(Boolean)
+      const kept = []
+      let dropped = 0
+      for (const line of localLines) {
+        const n = normN(line)
+        if (!n) continue
+        let dup = n.length >= 8 && mcLines.some((l) => l.includes(n))
+        if (!dup && n.length >= 12) {
+          const g = triGrams(n)
+          dup = mcLines.some((l) => l.length >= 12 && jaccard(g, triGrams(l)) >= 0.5)
+        }
+        if (dup) { dropped += 1; continue }
+        kept.push(line)
+      }
+      if (!mcText && !kept.length) return { ok: true, query: q, message: '没查到相关记忆' }
+      const parts = []
+      if (mcText) parts.push(`【MC 记忆库】\n${mcText.slice(0, 600)}`)
+      if (kept.length) parts.push(`【本地记忆】\n${kept.map((l) => `- ${l}`).join('\n')}`)
+      return { ok: true, query: q, dropped, text: parts.join('\n\n') }
+    }
 
     api.tool(({ chat, level, sessionId }) => {
       // fork（2026-11-21）：写入走本地记忆库，任何会话都能记；召回仍由 mc-recall 负责
@@ -130,6 +189,16 @@ export default {
             const aboutName = owner ? (about || chat.nickname || '') : senderLabel
             return memory.add({ text: raw, aboutName, about: chat.userId || '', importance: importance ?? 0.5, source: 'tool', chatId: current, acquaintedOnly: true })
           },
+        }),
+        defineTool({
+          name: 'recall_memory',
+          description: '查记忆：一次同时查 MC 记忆库（长期、带引文的事）和你自己记下的本地记忆，合并去重后返回，并标出哪条来自哪边。想起以前的事、别人问「你还记得…吗」时用。',
+          properties: {
+            query: str('要查什么，一句自然语言'),
+            limit: { type: 'number', description: '最多几条，默认 6，上限 20' },
+          },
+          required: ['query'],
+          execute: async ({ query, limit }) => recallBoth(query, Math.min(Math.max(Number(limit) || 6, 1), 20)),
         }),
       ]
     })
