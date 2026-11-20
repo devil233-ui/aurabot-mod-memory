@@ -41,11 +41,18 @@ Aurabot（DSH 的 QQ 插件 `dsh-aurabot-qq`）的「记忆」模块**本地版*
 
 ## 重新生成
 
-`tools/make_fork.py`（生成脚本）以内置版为底做字符串手术（去相对 import、换 `api.lib(...)`、删 `api.context`/`api.on('prompt')`/`api.every`/`recall_memory`/工具门限制）。升级插件后如需要，重新跑一次再肉眼过一遍 diff：
+`tools/make_fork.py` 生成的是**基线**：以内置版为底做字符串手术（去相对 import、换 `api.lib(...)`、删 `api.context`/`api.on('prompt')`/`api.every`/`recall_memory`/工具门限制）。
+
+⚠️ 当前这份 `index.mjs` 已经在基线上又加回了四样东西（`api.context` 常驻块、`api.on('prompt')` 并列注入+去重、`api.every(60_000, tick)`、合并版 `recall_memory`）。**直接重跑脚本会把这些覆盖掉**。升级插件后需要重新生成时，先开分支跑脚本，再 `git diff` 手动移植回这四处。
 
 ```bash
 python3 tools/make_fork.py   # 输入路径见脚本顶部的 SRC
 ```
+
+## 相关文档
+
+- [召回链路（MC + 本地）](docs/recall-pipeline.md)：三条注入通道、判重规则与标定数据、开关清单、踩坑与红线。
+- [aurabot-mod-mc-recall](https://github.com/devil233-ui/aurabot-mod-mc-recall)：负责每轮注入 MC 片段；`recall_memory` 工具已让给本模块。
 
 ## 注意
 
