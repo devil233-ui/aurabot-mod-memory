@@ -1,6 +1,6 @@
 # aurobot-mod-memory
 
-Aurabot（DSH 的 QQ 插件 `dsh-aurabot-qq`）的「记忆」模块 fork：**写入走本地记忆库，召回交给 `mc-recall`（MemoryConstellations）**。
+Aurabot（DSH 的 QQ 插件 `dsh-aurabot-qq`）的「记忆」模块**本地版**：**写入走本地记忆库，召回交给 `mc-recall`（MemoryConstellations）**。
 
 ## 它和内置版的差别
 
@@ -32,7 +32,7 @@ Aurabot（DSH 的 QQ 插件 `dsh-aurabot-qq`）的「记忆」模块 fork：**�
 
 ## 重新生成
 
-`tools/make_fork.py` 以内置版为底做字符串手术（去相对 import、换 `api.lib(...)`、删 `api.context`/`api.on('prompt')`/`api.every`/`recall_memory`/工具门限制）。升级插件后如需要，重新跑一次再肉眼过一遍 diff：
+`tools/make_fork.py`（生成脚本）以内置版为底做字符串手术（去相对 import、换 `api.lib(...)`、删 `api.context`/`api.on('prompt')`/`api.every`/`recall_memory`/工具门限制）。升级插件后如需要，重新跑一次再肉眼过一遍 diff：
 
 ```bash
 python3 tools/make_fork.py   # 输入路径见脚本顶部的 SRC
