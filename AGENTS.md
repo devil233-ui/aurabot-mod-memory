@@ -9,4 +9,3 @@ DSH QQ 插件 `dsh-aurabot-qq` 的「记忆」模块本地版。改这里之前�
 - **判重逐行做，归一化用 `\p{L}\p{N}`**：`\W` 不含中日韩，用它会把整段中文剥成空串；整块算 Jaccard 会被长段落稀释。
 - **`api.context` / `api.on('prompt')` / `api.every` 必须显式注册**：删掉对应代码就是永久失效，不是「暂时不跑」。改完文件宿主会热重载模块，不必重启宿主。
 - **重跑 `tools/make_fork.py` 会覆盖四处加回的能力**（常驻块、并列注入去重、`tick()`、合并版 `recall_memory`）：先开分支跑脚本，再 `git diff` 手动移植。
-- **提交身份用 `69190444+devil233-ui@users.noreply.github.com`**：仓库公开，不写真实邮箱，也不把会话里的账号信息带进提交信息。
