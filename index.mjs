@@ -6,6 +6,54 @@
 // 这里只用它的建边/布局/亮度和 tier 值域映射，不搬中枢的 assoc.mjs 和 pipeline.mjs。
 import { readFileSync, writeFileSync } from 'node:fs'
 
+// —— 并列注入去重：本地记忆块 vs 已注入内容（mc-recall 先跑，它注入的片段已在 content 里）——
+// 归一成 NFKC + 去掉所有非文字字符；逐条比对：整条被已有内容包含 → 丢；3-gram Jaccard ≥ 0.5 → 丢。
+// 注意：JS 的 \W 不含中日韩文字，必须用 Unicode 属性类，否则中文会被整段剥掉
+export const normN = (s) => String(s || '').normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '')
+export function triGrams(s) {
+  const g = new Set()
+  for (let i = 0; i + 3 <= s.length; i += 1) g.add(s.slice(i, i + 3))
+  return g
+}
+export function jaccard(a, b) {
+  if (!a.size || !b.size) return 0
+  let inter = 0
+  for (const x of a) if (b.has(x)) inter += 1
+  return inter / (a.size + b.size - inter)
+}
+export function promptTextOf(content) {
+  const parts = []
+  for (const p of Array.isArray(content) ? content : []) {
+    if (typeof p === 'string') parts.push(p)
+    else if (p && typeof p.text === 'string') parts.push(p.text)
+  }
+  return parts.join('\n')
+}
+export function dedupeHint(hint, content) {
+  // 逐行比对：MC 注入是一行一个片段，拿整块文本算相似度会被稀释
+  const rows = String(promptTextOf(content) || '')
+    .split('\n')
+    .map((l) => normN(l))
+    .filter((l) => l.length >= 8)
+  if (!rows.length) return { text: String(hint || ''), dropped: 0 }
+  const rowGrams = rows.map((l) => triGrams(l))
+  const kept = []
+  let dropped = 0
+  for (const raw of String(hint).split('\n')) {
+    const line = raw.replace(/^[\s\-•*·]+/, '').trim()
+    if (!line) { kept.push(raw); continue }
+    const n = normN(line)
+    let dup = n.length >= 8 && rows.some((l) => l.includes(n))
+    if (!dup && n.length >= 12) {
+      const g = triGrams(n)
+      dup = rowGrams.some((eg) => jaccard(g, eg) >= 0.5)
+    }
+    if (dup) { dropped += 1; continue }
+    kept.push(raw)
+  }
+  return { text: kept.join('\n').trim(), dropped }
+}
+
 
 export default {
   id: 'memory',
@@ -25,6 +73,26 @@ export default {
     memory.list('') // 启动时完成旧 JSON 迁移，不必等第一条聊天或打开面板。
 
     // #79：随消息变化的相关记忆放在「交给她的内容」里，不放进每轮都会追加的运行时上下文快照
+    // fork（2026-11-21）：与 mc-recall 并列注入；因为 filter 是链式的、mc-recall 先跑，
+    // 这里能读到它已注入的 MC 片段，逐条去重后再追加本地记忆，避免同一件事说两遍。
+    api.on('prompt', async (content, info) => {
+      try {
+        const chat = info?.chat
+        if (!chat || chat.kind === 'system' || !Array.isArray(content)) return content
+        const query = info.queryText || ''
+        const hits = memory.shouldAutoRecall(query) ? await memory.vectorHits(query, { respectForget: true }) : []
+        const hint = await memory.recallHintAsync(chat, query, info.prevText || '', info.sessionId, info.speakers || [], hits)
+        if (!hint) return content
+        const on = api.config()?.memory?.dedupeAgainstPrompt !== false
+        const { text, dropped } = on ? dedupeHint(hint, content) : { text: hint, dropped: 0 }
+        if (dropped > 0) api.log?.info?.(`[memory] 与已注入内容重复，跳过 ${dropped} 条本地记忆`)
+        if (!text) return content
+        return [{ type: 'text', text }, ...content]
+      } catch (error) {
+        api.log?.warn?.(`[memory] 注入本地记忆失败：${error?.message || error}`)
+        return content
+      }
+    })
 
     api.tool(({ chat, level, sessionId }) => {
       // fork（2026-11-21）：写入走本地记忆库，任何会话都能记；召回仍由 mc-recall 负责

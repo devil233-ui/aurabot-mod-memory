@@ -4,12 +4,13 @@ Aurabot（DSH 的 QQ 插件 `dsh-aurabot-qq`）的「记忆」模块 fork：**�
 
 ## 它和内置版的差别
 
-以内置 `src/modules/memory/index.js`（552 行版本）为底，做四件事：
+以内置 `src/modules/memory/index.js`（552 行版本）为底，做五件事：
 
 1. **写入留在本地**：`/memory/add|update|delete|restore|import`、`/memory/graph/*`、`/profiles/save` 等 51 条路由全部保留，写的是 `plugins-data/aurabot` 下的本地记忆库（`features/memory.js` 的 `createMemoryStore`）。
-2. **不注册 `api.context` / `api.on('prompt')`**：每轮自动注入只由 `mc-recall` 负责，避免同一轮塞两段记忆。
-3. **删掉 `recall_memory` 工具**：召回统一走 `mc-recall`（它查 MC 的 `/api/recall`）。
-4. **不注册 `api.every(60_000, memory.tick)`**：本地库的每分钟自动整理不跑（省模型调用）；面板上的整理入口仍在。
+2. **不注册 `api.context`**：每轮的常驻运行时上下文不由本模块追加（避免和「交给她的内容」重复）。
+3. **注册 `api.on('prompt')`，但与 `mc-recall` 并列注入时先去重**：宿主的 `prompt` 是链式 filter，`mc-recall`（模块 id 排序在前）先把 MC 片段塞进 `content`，本模块再读这份 `content` 逐行比对——整条被已有行包含、或 3-gram Jaccard ≥ 0.5 的本地条目直接跳过，跳过的条数写进日志。开关：`memory.dedupeAgainstPrompt`（默认 `true`）。
+4. **删掉 `recall_memory` 工具**：召回统一走 `mc-recall`（它查 MC 的 `/api/recall`）。
+5. **不注册 `api.every(60_000, memory.tick)`**：本地库的每分钟自动整理不跑（省模型调用）；面板上的整理入口仍在。
 
 工具保留三个：`lookup_person`、`chat_impression`、`remember`。
 
