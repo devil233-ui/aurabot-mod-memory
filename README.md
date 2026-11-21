@@ -8,11 +8,11 @@ Aurabot（DSH 的 QQ 插件 `dsh-aurabot-qq`）的「记忆」模块**本地版*
 
 1. **写入留在本地**：`/memory/add|update|delete|restore|import`、`/memory/graph/*`、`/profiles/save` 等 51 条路由全部保留，写的是 `plugins-data/aurabot` 下的本地记忆库（`features/memory.js` 的 `createMemoryStore`）。
 2. **注册 `api.context`（常驻记忆）**：每轮把 `memory.contextFor()`（面板「常住记忆上限」，默认 1200 字）挂进运行时上下文快照；它与 prompt 通道并存，判重时把常驻块也算作「已注入」。
-3. **注册 `api.on('prompt')`，但与 `mc-recall` 并列注入时先去重**：宿主的 `prompt` 是链式 filter，`mc-recall`（模块 id 排序在前）先把 MC 片段塞进 `content`，本模块再读这份 `content` 逐行比对——整条被已有行包含、或 3-gram Jaccard ≥ 0.5 的本地条目直接跳过，跳过的条数写进日志。开关：`memory.dedupeAgainstPrompt`（默认 `true`）。
+3. **注册 `api.on('prompt')`，但与 `mc-inject` 并列注入时先去重**：宿主的 `prompt` 是链式 filter，`mc-inject`（模块 id 排序在前）先把 MC 片段塞进 `content`，本模块再读这份 `content` 逐行比对——整条被已有行包含、或 3-gram Jaccard ≥ 0.5 的本地条目直接跳过，跳过的条数写进日志。开关：`memory.dedupeAgainstPrompt`（默认 `true`）。
 4. **保留 `recall_memory`，改成合并召回**：一次同时查 MC 的 `/api/recall` 与本地库，按「归一化后整条包含 / 3-gram Jaccard ≥ 0.5」去重，返回带【MC 记忆库】【本地记忆】标注的文本，并给出 `dropped`（被合并掉的本地条数）；两边都空时明说「没查到相关记忆」。
 5. **注册 `api.every(60_000, memory.tick)`**：每分钟检查一次，只有到面板设的整理时间才真正调模型。
 
-工具四个：`lookup_person`、`chat_impression`、`remember`、`recall_memory`。其中 `recall_memory` 由本模块独占（合并 MC 与本地库）；`mc-recall` 的同名工具已用 `ext["mc-recall"].tool=false` 关掉，它仍负责每轮把 MC 片段注入 `prompt`。
+工具四个：`lookup_person`、`chat_impression`、`remember`、`recall_memory`。其中 `recall_memory` 由本模块独占（合并 MC 与本地库）；`mc-inject` 的同名工具已用 `ext["mc-inject"].tool=false` 关掉，它仍负责每轮把 MC 片段注入 `prompt`。
 
 ## 为什么召回还留着 MC
 
@@ -52,7 +52,7 @@ python3 tools/make_fork.py   # 输入路径见脚本顶部的 SRC
 ## 相关文档
 
 - [召回链路（MC + 本地）](docs/recall-pipeline.md)：三条注入通道、判重规则与标定数据、开关清单、踩坑与红线。
-- [aurabot-mod-mc-recall](https://github.com/devil233-ui/aurabot-mod-mc-recall)：负责每轮注入 MC 片段；`recall_memory` 工具已让给本模块。
+- [aurabot-mod-mc-inject](https://github.com/devil233-ui/aurabot-mod-mc-inject)：负责每轮注入 MC 片段；`recall_memory` 工具已让给本模块。
 
 ## 注意
 

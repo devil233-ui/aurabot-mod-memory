@@ -6,7 +6,7 @@
 // 这里只用它的建边/布局/亮度和 tier 值域映射，不搬中枢的 assoc.mjs 和 pipeline.mjs。
 import { readFileSync, writeFileSync } from 'node:fs'
 
-// —— 并列注入去重：本地记忆块 vs 已注入内容（mc-recall 先跑，它注入的片段已在 content 里）——
+// —— 并列注入去重：本地记忆块 vs 已注入内容（mc-inject 先跑，它注入的片段已在 content 里）——
 // 归一成 NFKC + 去掉所有非文字字符；逐条比对：整条被已有内容包含 → 丢；3-gram Jaccard ≥ 0.5 → 丢。
 // 注意：JS 的 \W 不含中日韩文字，必须用 Unicode 属性类，否则中文会被整段剥掉
 export const normN = (s) => String(s || '').normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '')
@@ -77,7 +77,7 @@ export default {
     api.context(({ chat, sessionId }) => (chat.kind === 'system' ? '' : memory.contextFor(chat, sessionId)))
 
     // #79：随消息变化的相关记忆放在「交给她的内容」里，不放进每轮都会追加的运行时上下文快照
-    // fork（2026-11-21）：与 mc-recall 并列注入；因为 filter 是链式的、mc-recall 先跑，
+    // fork（2026-11-21）：与 mc-inject 并列注入；因为 filter 是链式的、mc-inject 先跑，
     // 这里能读到它已注入的 MC 片段，逐条去重后再追加本地记忆，避免同一件事说两遍。
     api.on('prompt', async (content, info) => {
       try {
@@ -154,13 +154,13 @@ export default {
     }
 
     api.tool(({ chat, level, sessionId }) => {
-      // fork（2026-11-21）：写入走本地记忆库，任何会话都能记；召回仍由 mc-recall 负责
+      // fork（2026-11-21）：写入走本地记忆库，任何会话都能记；召回仍由 mc-inject 负责
       const current = chat.chatId
       const senders = () => (typeof hub.turnSenders === 'function' ? hub.turnSenders(sessionId) : hub.speakersOf?.(sessionId)) || []
       return [
         defineTool({
           name: 'lookup_person',
-          description: '查你对某个人的整体印象和人物关系。聊到不在眼前的人、别人问你觉得谁怎么样时用；具体的事用 MC 召回（recall_memory 由 mc-recall 提供）。who 写名字、称呼或 QQ 号。',
+          description: '查你对某个人的整体印象和人物关系。聊到不在眼前的人、别人问你觉得谁怎么样时用；具体的事用 MC 召回（recall_memory 由 mc-inject 提供）。who 写名字、称呼或 QQ 号。',
           properties: { who: str('名字、称呼或 QQ 号') },
           required: ['who'],
           execute: async ({ who }) => memory.lookupPerson(chat, who, senders()),

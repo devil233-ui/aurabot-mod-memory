@@ -6,7 +6,7 @@
 
 ```
 用户这轮的消息
-  ├─ mc-recall  api.on('prompt')   → 查 MC /api/recall，注入 MC 片段
+  ├─ mc-inject  api.on('prompt')   → 查 MC /api/recall，注入 MC 片段
   ├─ memory     api.on('prompt')   → 本地召回，逐行与上面已注入的内容去重后注入
   ├─ memory     api.context        → 常驻记忆块（面板「常住记忆上限」，默认 1200 字）
   └─ 模型
@@ -15,7 +15,7 @@
   └─ memory     recall_memory 工具 → 一次查 MC + 本地，合并去重，带【MC 记忆库】【本地记忆】标注
 ```
 
-宿主 `prompt` 是**链式 filter**：每个 listener 拿到上一个改完的 `content`，返回新值继续传。模块按 id 排序加载，`mc-recall` < `memory`，所以本地钩子能看到 MC 已经注入的内容——这是「不引入共享缓存也能去重」的前提。顺序变了，去重会失效（不会报错，只是重复变多）。
+宿主 `prompt` 是**链式 filter**：每个 listener 拿到上一个改完的 `content`，返回新值继续传。模块按 id 排序加载，`mc-inject` < `memory`，所以本地钩子能看到 MC 已经注入的内容——这是「不引入共享缓存也能去重」的前提。顺序变了，去重会失效（不会报错，只是重复变多）。
 
 ## 三处开关
 
@@ -23,7 +23,7 @@
 |---|---|---|
 | `memory.enabled` | `config.json` 顶层 | 总闸。为 `false` 时：注入为空、常驻块为空、`tick()` 不整理，但工具仍注册 |
 | `memory.dedupeAgainstPrompt` | 同上 | 默认 `true`；关掉后本地注入不再与 MC 比对 |
-| `ext['mc-recall'].tool` | `config.json` → `ext` | 默认 `true`；线上设 `false`，把 `recall_memory` 让给 memory 模块的合并版 |
+| `ext['mc-inject'].tool` | `config.json` → `ext` | 默认 `false`；线上保持 `false`，把 `recall_memory` 让给 memory 模块的合并版 |
 
 面板上「记忆 memory · 用的是你的版本」只说明**模块**启用了（`modules.memory.enabled` + `useBuiltin:false`），和上面的 `memory.enabled` 是两回事——排查「明明开着却没反应」时先看这一位。
 
@@ -46,7 +46,7 @@
 [debug] [modules] 工具 recall_memory 重名，模块「memory」的没挂
 ```
 
-所以合并版上线时把 `ext['mc-recall'].tool` 设成了 `false`，并让 memory 重载一次。想回到「只查 MC」的老行为：`mc-recall.tool=true`，同时把 memory 的 `recall_memory` 移除或改名。
+所以合并版上线时把 `ext['mc-inject'].tool` 设成了 `false`，并让 memory 重载一次。想回到「只查 MC」的老行为：`mc-inject.tool=true`，同时把 memory 的 `recall_memory` 移除或改名。
 
 ## 踩坑清单
 
