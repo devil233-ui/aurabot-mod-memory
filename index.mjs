@@ -150,7 +150,9 @@ export default {
       const parts = []
       if (mcText) parts.push(`【MC 记忆库】\n${mcText.slice(0, 600)}`)
       if (kept.length) parts.push(`【本地记忆】\n${kept.map((l) => `- ${l}`).join('\n')}`)
-      return { ok: true, query: q, dropped, text: parts.join('\n\n') }
+      // 宿主的默认 render 只把 message 交给模型（src/tools/tools.js:19）：写成 text 会被渲染成「✓」
+      const note = dropped ? `\n（本地 ${dropped} 条与 MC 重复，已合并）` : ''
+      return { ok: true, query: q, dropped, message: parts.join('\n\n') + note }
     }
 
     api.tool(({ chat, level, sessionId }) => {
