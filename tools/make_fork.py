@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """以内置 memory 模块为底，生成 plugins-data 下的 fork：
-- 不注册 api.context / api.on('prompt') / api.every（召回交给 mc-recall）
+- 不注册 api.context / api.on('prompt') / api.every（召回交给 mc-inject）
 - 去掉 recall_memory 工具与它专用的 parsePeriod
 - 工具门放开（任何会话都能记）
 - 其余写路由与工具原样保留；import 改成 api.lib(...)
@@ -61,7 +61,7 @@ if tick_line not in text:
     sys.exit("api.every 锚点缺失")
 text = text.replace(tick_line, "", 1)
 
-# 5) 去掉 recall_memory 工具（召回由 mc-recall 负责）
+# 5) 去掉 recall_memory 工具（召回由 mc-inject 负责）
 before = text
 text = cut(text, "        defineTool({\n          name: 'recall_memory',", "\n        }),\n", "recall_memory 工具")
 if text == before:
@@ -73,7 +73,7 @@ if gate not in text:
     sys.exit("工具门锚点缺失")
 text = text.replace(
     gate,
-    "      // fork（2026-11-21）：写入走本地记忆库，任何会话都能记；召回仍由 mc-recall 负责\n",
+    "      // fork（2026-11-21）：写入走本地记忆库，任何会话都能记；召回仍由 mc-inject 负责\n",
     1,
 )
 
